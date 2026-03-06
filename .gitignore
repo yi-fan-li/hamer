@@ -14,8 +14,17 @@ token_channel.csv
 /_DATA/
 /hamer_training_data/
 /outputs/
-
 mano_v1_2/
+
+#additional data to irgnore
+dataset/
+demo_out_backup/
+hamer_demo_data.tar.gzhjxcubvk.part
+hamer_evaluation_data/
+out.mp4
+out_video_demo/
+output_video.mp4
+sample_video/
 
 
 # Byte-compiled / optimized / DLL files

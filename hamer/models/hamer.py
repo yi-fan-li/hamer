@@ -49,6 +49,8 @@ class HAMER(pl.LightningModule):
 
         # Instantiate MANO model
         mano_cfg = {k.lower(): v for k,v in dict(cfg.MANO).items()}
+        print("MANO cfg:")
+        print(mano_cfg)
         self.mano = MANO(**mano_cfg)
 
         # Buffer that shows whetheer we need to initialize ActNorm layers

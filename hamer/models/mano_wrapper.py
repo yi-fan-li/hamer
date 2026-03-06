@@ -29,6 +29,9 @@ class MANO(smplx.MANOLayer):
         """
         Run forward pass. Same as MANO and also append an extra set of joints if joint_regressor_extra is specified.
         """
+        # print("MANO forward called")
+        # print("Args:", args)
+        # print("Kwargs:", kwargs)
         mano_output = super(MANO, self).forward(*args, **kwargs)
         extra_joints = torch.index_select(mano_output.vertices, 1, self.extra_joints_idxs)
         joints = torch.cat([mano_output.joints, extra_joints], dim=1)
