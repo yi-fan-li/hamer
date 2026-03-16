@@ -33,7 +33,11 @@ class HAMER(pl.LightningModule):
         self.backbone = create_backbone(cfg)
         if cfg.MODEL.BACKBONE.get('PRETRAINED_WEIGHTS', None):
             log.info(f'Loading backbone weights from {cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS}')
-            self.backbone.load_state_dict(torch.load(cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu')['state_dict'])
+            weights = torch.load(cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu')
+            if 'state_dict' in weights:
+                weights = weights['state_dict']
+            target = self.backbone.model if hasattr(self.backbone, 'model') else self.backbone
+            target.load_state_dict(weights)
 
         # Create MANO head
         self.mano_head = build_mano_head(cfg)
