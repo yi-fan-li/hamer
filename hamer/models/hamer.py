@@ -33,7 +33,7 @@ class HAMER(pl.LightningModule):
         self.backbone = create_backbone(cfg)
         if cfg.MODEL.BACKBONE.get('PRETRAINED_WEIGHTS', None):
             log.info(f'Loading backbone weights from {cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS}')
-            weights = torch.load(cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu')
+            weights = torch.load(cfg.MODEL.BACKBONE.PRETRAINED_WEIGHTS, map_location='cpu', weights_only=False)
             if 'state_dict' in weights:
                 weights = weights['state_dict']
             target = self.backbone.model if hasattr(self.backbone, 'model') else self.backbone
@@ -329,7 +329,7 @@ class HAMER(pl.LightningModule):
         # Clip gradient
         if self.cfg.TRAIN.get('GRAD_CLIP_VAL', 0) > 0:
             gn = torch.nn.utils.clip_grad_norm_(self.get_parameters(), self.cfg.TRAIN.GRAD_CLIP_VAL, error_if_nonfinite=True)
-            self.log('train/grad_norm', gn, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+            self.log('train/grad_norm', gn, on_step=True, on_epoch=False, prog_bar=True, logger=True)
         optimizer.step()
         if self.cfg.LOSS_WEIGHTS.ADVERSARIAL > 0:
             loss_disc = self.training_step_discriminator(mocap_batch, pred_mano_params['hand_pose'].reshape(batch_size, -1), pred_mano_params['betas'].reshape(batch_size, -1), optimizer_disc)
@@ -339,7 +339,7 @@ class HAMER(pl.LightningModule):
         if self.global_step > 0 and self.global_step % self.cfg.GENERAL.LOG_STEPS == 0:
             self.tensorboard_logging(batch, output, self.global_step, train=True)
 
-        self.log('train/loss', output['losses']['loss'], on_step=True, on_epoch=True, prog_bar=True, logger=False)
+        self.log('train/loss', output['losses']['loss'], on_step=True, on_epoch=False, prog_bar=True, logger=False)
 
         return output
 

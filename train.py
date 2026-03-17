@@ -11,6 +11,13 @@ root = pyrootutils.setup_root(
 import os
 from pathlib import Path
 
+import torch as _torch
+_orig_torch_load = _torch.load
+def _patched_torch_load(*args, **kwargs):
+    kwargs.setdefault('weights_only', False)
+    return _orig_torch_load(*args, **kwargs)
+_torch.load = _patched_torch_load
+
 import hydra
 import pytorch_lightning as pl
 from omegaconf import DictConfig, OmegaConf

@@ -2,3 +2,9 @@
 	path = third-party/ViTPose
 	url = https://github.com/ViTAE-Transformer/ViTPose.git
 	branch = main
+[submodule "thrid-party/dinov3"]
+	path = thrid-party/dinov3
+	url = https://github.com/facebookresearch/dinov3.git
+[submodule "third-party/dinov3"]
+	path = third-party/dinov3
+	url = https://github.com/facebookresearch/dinov3.git
