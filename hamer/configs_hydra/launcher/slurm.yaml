@@ -5,18 +5,16 @@ defaults:
 
 hydra:
   launcher:
-    timeout_min: 10_080   # 7 days
+    timeout_min: 10_080   # 7 days (partition allows 14)
     max_num_timeout: 3
-    partition: g40
-    qos: idle
+    partition: liu-compute
     nodes: 1
     tasks_per_node: ${trainer.devices}
     gpus_per_task: null
     cpus_per_task: 12
     gpus_per_node: ${trainer.devices}
     cpus_per_gpu: null
-    comment: laion
     name: hamer
     setup:
-      - module load cuda openmpi libfabric-aws
-      - export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+    - export HAMER_DATA_ROOT=/mnt/kostas-graid/datasets/yli
+    - source /mnt/kostas-graid/sw/envs/yli/miniconda3/etc/profile.d/conda.sh && conda activate hamer_dino_train
