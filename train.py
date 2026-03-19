@@ -53,7 +53,7 @@ def save_configs(model_cfg: CfgNode, dataset_cfg: CfgNode, rootdir: str):
 def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # Load dataset config
-    dataset_cfg = dataset_config()
+    dataset_cfg = dataset_config(data_root=cfg.paths.get('training_data_dir', ''))
 
     # Save configs
     save_configs(cfg, dataset_cfg, cfg.paths.output_dir)
