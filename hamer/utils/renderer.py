@@ -3,10 +3,7 @@ if 'PYOPENGL_PLATFORM' not in os.environ:
     os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import torch
 import numpy as np
-try:
-    import pyrender
-except ImportError:
-    pyrender = None
+import pyrender
 import trimesh
 import cv2
 from yacs.config import CfgNode
