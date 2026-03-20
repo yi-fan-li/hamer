@@ -243,14 +243,15 @@ class HAMER(pl.LightningModule):
         #                            2 * gt_keypoints_2d[:num_images],
         #                            images=images[:num_images],
         #                            camera_translation=pred_cam_t[:num_images])
-        predictions = self.mesh_renderer.visualize_tensorboard(pred_vertices[:num_images].cpu().numpy(),
-                                                               pred_cam_t[:num_images].cpu().numpy(),
-                                                               images[:num_images].cpu().numpy(),
-                                                               pred_keypoints_2d[:num_images].cpu().numpy(),
-                                                               gt_keypoints_2d[:num_images].cpu().numpy(),
-                                                               focal_length=focal_length[:num_images].cpu().numpy())
-        if write_to_summary_writer:
-            summary_writer.add_image('%s/predictions' % mode, predictions, step_count)
+        if self.mesh_renderer is not None:
+            predictions = self.mesh_renderer.visualize_tensorboard(pred_vertices[:num_images].cpu().numpy(),
+                                                                   pred_cam_t[:num_images].cpu().numpy(),
+                                                                   images[:num_images].cpu().numpy(),
+                                                                   pred_keypoints_2d[:num_images].cpu().numpy(),
+                                                                   gt_keypoints_2d[:num_images].cpu().numpy(),
+                                                                   focal_length=focal_length[:num_images].cpu().numpy())
+            if write_to_summary_writer:
+                summary_writer.add_image('%s/predictions' % mode, predictions, step_count)
 
         return predictions
 
