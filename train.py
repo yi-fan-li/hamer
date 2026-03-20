@@ -62,7 +62,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     datamodule = HAMERDataModule(cfg, dataset_cfg)
 
     # Setup model
-    model = HAMER(cfg)
+    model = HAMER(cfg, init_renderer=False)
 
     # Setup Tensorboard logger
     logger = TensorBoardLogger(os.path.join(cfg.paths.output_dir, 'tensorboard'), name='', version='', default_hp_metric=False)
