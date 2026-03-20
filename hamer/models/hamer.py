@@ -252,8 +252,7 @@ class HAMER(pl.LightningModule):
                                                                    focal_length=focal_length[:num_images].cpu().numpy())
             if write_to_summary_writer:
                 summary_writer.add_image('%s/predictions' % mode, predictions, step_count)
-
-        return predictions
+            return predictions
 
     def forward(self, batch: Dict) -> Dict:
         """
