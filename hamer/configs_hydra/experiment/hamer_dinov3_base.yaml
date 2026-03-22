@@ -29,6 +29,7 @@ MODEL:
   BACKBONE:
     TYPE: dinov3
     PRETRAINED_WEIGHTS: hamer_training_data/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
+    NUM_UNFROZEN_LAYERS: 0  # number of final transformer blocks to leave trainable (0 = fully frozen)
   MANO_HEAD:
     TYPE: transformer_decoder
     IN_CHANNELS: 2048
