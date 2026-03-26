@@ -42,6 +42,13 @@ pip install -e .[all]
 pip install -v -e third-party/ViTPose
 ```
 
+training with dino installation note::
+```bash
+pip install "torch>=2.4.0" torchvision --index-url https://download.pytorch.org/whl/cu124
+
+pip install --no-build-isolation -r requirements_training_dino.txt
+```
+
 You also need to download the trained models:
 ```bash
 bash fetch_demo_data.sh

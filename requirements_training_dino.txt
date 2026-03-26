@@ -15,7 +15,7 @@ smplx==0.1.28
 torch>=2.4.0
 torchvision>=0.19.0
 yacs
-chumpy @ git+https://github.com/mattloper/chumpy
+# chumpy @ git+https://github.com/mattloper/chumpy
 timm
 einops
 pandas

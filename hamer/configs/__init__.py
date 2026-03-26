@@ -71,7 +71,7 @@ def default_config() -> CN:
     # This is for the "local variable" use pattern
     return _C.clone()
 
-def dataset_config(name='datasets_tar.yaml') -> CN:
+def dataset_config(name='datasets_tar.yaml', data_root: str = '') -> CN:
     """
     Get dataset config file
     Returns:
@@ -80,6 +80,16 @@ def dataset_config(name='datasets_tar.yaml') -> CN:
     cfg = CN(new_allowed=True)
     config_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), name)
     cfg.merge_from_file(config_file)
+
+    if data_root:
+        for key in cfg:
+            entry = cfg[key]
+            if isinstance(entry, CN):
+                if 'URLS' in entry and not os.path.isabs(entry['URLS']):
+                    entry['URLS'] = os.path.join(data_root, entry['URLS'])
+                if 'DATASET_FILE' in entry and not os.path.isabs(entry['DATASET_FILE']):
+                    entry['DATASET_FILE'] = os.path.join(data_root, entry['DATASET_FILE'])
+
     cfg.freeze()
     return cfg
 

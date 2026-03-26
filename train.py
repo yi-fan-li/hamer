@@ -14,7 +14,7 @@ from pathlib import Path
 import torch as _torch
 _orig_torch_load = _torch.load
 def _patched_torch_load(*args, **kwargs):
-    kwargs.setdefault('weights_only', False)
+    kwargs['weights_only'] = False
     return _orig_torch_load(*args, **kwargs)
 _torch.load = _patched_torch_load
 
@@ -53,7 +53,7 @@ def save_configs(model_cfg: CfgNode, dataset_cfg: CfgNode, rootdir: str):
 def train(cfg: DictConfig) -> Tuple[dict, dict]:
 
     # Load dataset config
-    dataset_cfg = dataset_config()
+    dataset_cfg = dataset_config(data_root=cfg.paths.get('training_data_dir', ''))
 
     # Save configs
     save_configs(cfg, dataset_cfg, cfg.paths.output_dir)
@@ -62,7 +62,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     datamodule = HAMERDataModule(cfg, dataset_cfg)
 
     # Setup model
-    model = HAMER(cfg)
+    model = HAMER(cfg, init_renderer=False)
 
     # Setup Tensorboard logger
     logger = TensorBoardLogger(os.path.join(cfg.paths.output_dir, 'tensorboard'), name='', version='', default_hp_metric=False)
