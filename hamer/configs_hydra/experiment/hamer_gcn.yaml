@@ -4,8 +4,8 @@ defaults:
   - default.yaml
 
 GENERAL:
-  TOTAL_STEPS: 1_000_000
-  LOG_STEPS: 1000
+  TOTAL_STEPS: 200_000
+  LOG_STEPS: 500
   VAL_STEPS: 1000
   CHECKPOINT_STEPS: 1000
   CHECKPOINT_SAVE_TOP_K: 1
@@ -26,10 +26,10 @@ MODEL:
   IMAGE_SIZE: 256
   IMAGE_MEAN: [0.485, 0.456, 0.406]
   IMAGE_STD: [0.229, 0.224, 0.225]
+  # MODEL.BACKBONE / MANO_HEAD are not used directly by HAMERWithGCN;
+  # they are read from the frozen HaMeR checkpoint's own saved config.
   BACKBONE:
     TYPE: dinov3
-    PRETRAINED_WEIGHTS: hamer_training_data/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
-    NUM_UNFROZEN_LAYERS: 4  # number of final transformer blocks to leave trainable (0 = fully frozen)
   MANO_HEAD:
     TYPE: transformer_decoder
     IN_CHANNELS: 2048
@@ -41,12 +41,21 @@ MODEL:
       dropout: 0.0
       emb_dropout: 0.0
       norm: layer
-      context_dim: 768 # from dinov3-B
+      context_dim: 768
 
 LOSS_WEIGHTS:
   KEYPOINTS_3D: 0.05
   KEYPOINTS_2D: 0.01
-  GLOBAL_ORIENT: 0.001
-  HAND_POSE: 0.001
-  BETAS: 0.0005
-  ADVERSARIAL: 0.0005
+  # MANO parameter losses are unused (GCN only outputs joint deltas)
+  GLOBAL_ORIENT: 0.0
+  HAND_POSE: 0.0
+  BETAS: 0.0
+  ADVERSARIAL: 0.0
+
+GCN:
+  # Path to the pretrained frozen HaMeR checkpoint to refine.
+  HAMER_CHECKPOINT: ???
+  # DINOv3-B feature channels (768); update if using a different backbone.
+  FEAT_CHANNELS: 768
+  HIDDEN_DIM: 256
+  NUM_LAYERS: 3

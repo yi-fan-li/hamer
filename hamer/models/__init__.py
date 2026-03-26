@@ -1,5 +1,6 @@
 from .mano_wrapper import MANO
 from .hamer import HAMER
+from .hamer_gcn import HAMERWithGCN
 from .discriminator import Discriminator
 
 from ..utils.download import cache_url
@@ -29,6 +30,22 @@ def download_models(folder=CACHE_DIR_HAMER):
                 os.system("tar -xvf " + output_path)
 
 DEFAULT_CHECKPOINT=f'{CACHE_DIR_HAMER}/hamer_ckpts/checkpoints/hamer.ckpt'
+
+def load_hamer_gcn(checkpoint_path: str):
+    """Load a HAMERWithGCN model from a GCN training checkpoint."""
+    from pathlib import Path
+    from ..configs import get_config
+    from .hamer_gcn import HAMERWithGCN
+
+    model_cfg_path = str(Path(checkpoint_path).parent.parent / 'model_config.yaml')
+    model_cfg = get_config(model_cfg_path, update_cachedir=True)
+
+    model = HAMERWithGCN.load_from_checkpoint(
+        checkpoint_path, strict=False, cfg=model_cfg,
+    )
+    return model, model_cfg
+
+
 def load_hamer(checkpoint_path=DEFAULT_CHECKPOINT):
     from pathlib import Path
     from ..configs import get_config
