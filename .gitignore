@@ -164,3 +164,23 @@ dmypy.json
 
 #specific to hamer
 Hot3d_vis/*
+# --- Jupyter Notebooks & Data ---
+# Temporary checkpoint files created by Jupyter
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Large data and third-party dependencies 
+# (Matches the folder where your large file was located)
+third-party/
+data/
+outputs/
+*.pth
+*.onnx
+*.pkl
+
+# --- Python & System ---
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+Thumbs.db
