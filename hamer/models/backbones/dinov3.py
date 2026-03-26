@@ -21,7 +21,7 @@ class DINOv3Backbone(nn.Module):
 
 
 def dinov3(cfg):
-    DINOV3_LOCATION = "./third_party/dinov3"
+    DINOV3_LOCATION = "/home/yifanli/github/hamer/third-party/dinov3"
 
     print(f"DINOv3 location set to {DINOV3_LOCATION}")
 

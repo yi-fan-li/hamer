@@ -1,4 +1,5 @@
 import copy
+import logging
 import os
 import numpy as np
 import torch
@@ -335,7 +336,7 @@ class ImageDataset(Dataset):
                                                         BBOX_SHAPE=BBOX_SHAPE,
                                                         use_skimage_antialias=use_skimage_antialias,
                                                         border_mode=border_mode,
-                                                        ))
+                                                        )).select(lambda x: x is not None)
         if epoch_size is not None:
             dataset = dataset.with_epoch(epoch_size)
 
@@ -351,8 +352,29 @@ class ImageDataset(Dataset):
                                     use_skimage_antialias=False,
                                     border_mode=cv2.BORDER_CONSTANT,
                                     ):
-        # Read data from item
         key = item['__key__']
+        try:
+            return ImageDataset._process_webdataset_tar_item_inner(item, key, train,
+                                                                    augm_config=augm_config,
+                                                                    MEAN=MEAN, STD=STD, IMG_SIZE=IMG_SIZE,
+                                                                    BBOX_SHAPE=BBOX_SHAPE,
+                                                                    use_skimage_antialias=use_skimage_antialias,
+                                                                    border_mode=border_mode)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Skipping sample '{key}': {e}")
+            return None
+
+    @staticmethod
+    def _process_webdataset_tar_item_inner(item, key, train,
+                                           augm_config=None,
+                                           MEAN=DEFAULT_MEAN,
+                                           STD=DEFAULT_STD,
+                                           IMG_SIZE=DEFAULT_IMG_SIZE,
+                                           BBOX_SHAPE=None,
+                                           use_skimage_antialias=False,
+                                           border_mode=cv2.BORDER_CONSTANT,
+                                           ):
+        # Read data from item
         image = item['jpg']
         data = item['data.pyd']
         mask = item['mask']
@@ -374,7 +396,7 @@ class ImageDataset(Dataset):
         center_y = center[1]
         bbox_size = expand_to_aspect_ratio(scale*200, target_aspect_ratio=BBOX_SHAPE).max()
         if bbox_size < 1:
-            breakpoint()
+            raise ValueError(f"bbox_size={bbox_size:.4f} < 1")
 
 
         mano_params = {'global_orient': hand_pose[:3],

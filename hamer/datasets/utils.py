@@ -2,6 +2,7 @@
 Parts of the code are taken or adapted from
 https://github.com/mkocabas/EpipolarPose/blob/master/lib/utils/img_utils.py
 """
+import logging
 import torch
 import numpy as np
 from skimage.transform import rotate, resize
@@ -29,7 +30,7 @@ def expand_to_aspect_ratio(input_shape, target_aspect_ratio=None):
         h_new = h
         w_new = max(h * w_t / h_t, w)
     if h_new < h or w_new < w:
-        breakpoint()
+        raise ValueError(f"expand_to_aspect_ratio shrunk bbox: ({w},{h}) -> ({w_new:.2f},{h_new:.2f})")
     return np.array([w_new, h_new])
 
 def do_augmentation(aug_config: CfgNode) -> Tuple:
@@ -256,8 +257,8 @@ def generate_image_patch_skimage(img: np.array, c_x: float, c_y: float,
     # Padding so that when rotated proper amount of context is included
     try:
         pad = int(np.linalg.norm(br - ul) / 2 - float(br[1] - ul[1]) / 2) + 1
-    except:
-        breakpoint()
+    except Exception as e:
+        raise ValueError(f"Failed to compute crop padding from ul={ul}, br={br}") from e
     if not rot == 0:
         ul -= pad
         br += pad
@@ -297,14 +298,7 @@ def generate_image_patch_skimage(img: np.array, c_x: float, c_y: float,
         new_img = new_img[pad:-pad, pad:-pad]
 
     if new_img.shape[0] < 1 or new_img.shape[1] < 1:
-        print(f'{img.shape=}')
-        print(f'{new_img.shape=}')
-        print(f'{ul=}')
-        print(f'{br=}')
-        print(f'{pad=}')
-        print(f'{rot=}')
-
-        breakpoint()
+        raise ValueError(f"Degenerate crop: img={img.shape}, crop={new_img.shape}, ul={ul}, br={br}, pad={pad}, rot={rot}")
 
     # resize image
     new_img = resize(new_img, res) # scipy.misc.imresize(new_img, res)
@@ -552,7 +546,7 @@ def get_example(img_path: str|np.ndarray, center_x: float, center_y: float,
         do_flip = True
 
     if width < 1 or height < 1:
-        breakpoint()
+        raise ValueError(f"Degenerate bbox: width={width:.4f}, height={height:.4f}")
 
     if do_extreme_crop:
         if extreme_crop_lvl == 0:

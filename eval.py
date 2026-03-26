@@ -1,6 +1,7 @@
 import argparse
 import os
 import json
+import time
 from pathlib import Path
 import traceback
 from typing import List, Optional
@@ -27,6 +28,7 @@ def main():
     parser.add_argument('--log_freq', type=int, default=10, help='How often to log results')
     parser.add_argument('--shuffle', dest='shuffle', action='store_true', default=False, help='Shuffle the dataset during evaluation')
     parser.add_argument('--exp_name', type=str, default=None, help='Experiment name')
+    parser.add_argument('--benchmark', dest='benchmark', action='store_true', default=False, help='Measure inference time per frame instead of running evaluation')
 
     args = parser.parse_args()
 
@@ -44,7 +46,42 @@ def main():
     for dataset in args.dataset.split(','):
         dataset_cfg = dataset_eval_config()[dataset]
         args.dataset = dataset
-        run_eval(model, model_cfg, dataset_cfg, device, args)
+        if args.benchmark:
+            benchmark_inference_time(model, model_cfg, dataset_cfg, device, args)
+        else:
+            run_eval(model, model_cfg, dataset_cfg, device, args)
+
+def benchmark_inference_time(model, model_cfg, dataset_cfg, device, args, num_warmup_batches=5):
+    """Measure model inference time per frame, excluding data loading."""
+    from hamer.configs import CACHE_DIR_HAMER
+    dataset = create_dataset(model_cfg, dataset_cfg, train=False, rescale_factor=-1)
+    dataloader = torch.utils.data.DataLoader(dataset, args.batch_size, shuffle=False, num_workers=args.num_workers)
+
+    total_time = 0.0
+    total_frames = 0
+
+    for i, batch in enumerate(tqdm(dataloader, desc=f'Benchmarking {args.dataset}')):
+        batch = recursive_to(batch, device)
+        with torch.no_grad():
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            model(batch)
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            t1 = time.perf_counter()
+
+        if i >= num_warmup_batches:
+            total_time += t1 - t0
+            total_frames += batch['img'].shape[0]
+
+    if total_frames > 0:
+        ms_per_frame = (total_time / total_frames) * 1000
+        fps = total_frames / total_time
+        print(f'[{args.dataset}] Inference: {ms_per_frame:.2f} ms/frame | {fps:.1f} FPS '
+              f'({total_frames} frames, {total_time:.2f}s, warmup={num_warmup_batches} batches)')
+    else:
+        print(f'[{args.dataset}] Not enough batches to benchmark (need > {num_warmup_batches}).')
 
 def run_eval(model, model_cfg, dataset_cfg, device, args):
 
@@ -54,6 +91,12 @@ def run_eval(model, model_cfg, dataset_cfg, device, args):
         preds = ['vertices', 'keypoints_3d']
         pck_thresholds = None
         rescale_factor = -1
+    elif args.dataset in ['HOT3D-VAL']:
+        # HOT3D: 2D PCK + kpl2 metrics (no server-side 3D eval required)
+        metrics = ['mode_kpl2']
+        preds = None
+        pck_thresholds = [0.05, 0.1, 0.15]
+        rescale_factor = 2
     elif args.dataset in ['NEWDAYS-TEST-ALL', 'NEWDAYS-TEST-VIS', 'NEWDAYS-TEST-OCC',
                           'EPICK-TEST-ALL', 'EPICK-TEST-VIS', 'EPICK-TEST-OCC',
                           'EGO4D-TEST-ALL', 'EGO4D-TEST-VIS', 'EGO4D-TEST-OCC']:

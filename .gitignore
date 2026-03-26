@@ -161,3 +161,6 @@ dmypy.json
 /data/
 
 *.zip
+
+#specific to hamer
+Hot3d_vis/*

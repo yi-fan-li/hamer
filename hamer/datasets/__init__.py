@@ -10,6 +10,7 @@ from ..configs import to_lower
 from .dataset import Dataset
 from .image_dataset import ImageDataset
 from .mocap_dataset import MoCapDataset
+from .hot3d_dataset import HOT3DDataset
 
 def create_dataset(cfg: CfgNode, dataset_cfg: CfgNode, train: bool = True, **kwargs) -> Dataset:
     """
