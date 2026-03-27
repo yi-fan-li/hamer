@@ -10,11 +10,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 
-CSV_A = "results/eval_regression_dinov3_base.csv"
-LABEL_A = "DINOv3-B (unfrozen)"
-
-CSV_B = "results/eval_regression.csv"
-LABEL_B = "DINOv3-B (frozen, 4L head)"
+MODELS = [
+    ("results/eval_regression_dinov3_base.csv", "DINOv3-B (fine-tuned)",  "#4C72B0"),
+    ("results/eval_regression_dino4l.csv",      "DINOv3-B (4L head)",     "#DD8452"),
+]
 
 OUT = "results/comparison_plot.png"
 
@@ -37,9 +36,6 @@ DATASETS = [
 
 DATASET_LABELS = [d.replace("-TEST-", "\n") for d in DATASETS]
 
-COLOR_A = "#4C72B0"
-COLOR_B = "#DD8452"
-
 
 def load(path, label):
     df = pd.read_csv(path)
@@ -55,22 +51,23 @@ def pivot(df, metric):
 
 
 def main():
-    df_a = load(CSV_A, LABEL_A)
-    df_b = load(CSV_B, LABEL_B)
+    dfs = [(load(path, label), label, color) for path, label, color in MODELS]
+    n_models = len(dfs)
 
     n_metrics = len(SUMMARY_METRICS)
     fig, axes = plt.subplots(1, n_metrics, figsize=(5 * n_metrics, 5))
-    fig.suptitle(f"{LABEL_A}  vs  {LABEL_B}", fontsize=13, fontweight="bold", y=1.02)
+    fig.suptitle("Model comparison", fontsize=13, fontweight="bold", y=1.02)
 
     x = np.arange(len(DATASETS))
-    width = 0.35
+    width = 0.25
+    offsets = np.linspace(-(n_models - 1) / 2, (n_models - 1) / 2, n_models) * width
 
     for ax, (metric_key, metric_label) in zip(axes, SUMMARY_METRICS):
-        vals_a = pivot(df_a, metric_key).reindex(DATASETS)
-        vals_b = pivot(df_b, metric_key).reindex(DATASETS)
-
-        bars_a = ax.bar(x - width / 2, vals_a, width, label=LABEL_A, color=COLOR_A)
-        bars_b = ax.bar(x + width / 2, vals_b, width, label=LABEL_B, color=COLOR_B)
+        all_bars = []
+        for (df, label, color), offset in zip(dfs, offsets):
+            vals = pivot(df, metric_key).reindex(DATASETS)
+            bars = ax.bar(x + offset, vals, width, label=label, color=color)
+            all_bars.append(bars)
 
         ax.set_title(metric_label, fontsize=11)
         ax.set_xticks(x)
@@ -83,18 +80,19 @@ def main():
             ax.set_ylim(0, 1.0)
 
         # annotate bar tops
-        for bar in [*bars_a, *bars_b]:
-            h = bar.get_height()
-            if not np.isnan(h):
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    h,
-                    f"{h:.3f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=6,
-                    rotation=90,
-                )
+        for bars in all_bars:
+            for bar in bars:
+                h = bar.get_height()
+                if not np.isnan(h):
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2,
+                        h,
+                        f"{h:.3f}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=6,
+                        rotation=90,
+                    )
 
     fig.tight_layout()
     fig.savefig(OUT, dpi=150, bbox_inches="tight")
@@ -105,11 +103,11 @@ def main():
     rows = []
     for metric_key, metric_label in SUMMARY_METRICS:
         for ds in DATASETS:
-            va = df_a[df_a["dataset"] == ds][df_a["metric_name"] == metric_key]["metric_value"]
-            vb = df_b[df_b["dataset"] == ds][df_b["metric_name"] == metric_key]["metric_value"]
-            va = va.values[0] if len(va) else float("nan")
-            vb = vb.values[0] if len(vb) else float("nan")
-            rows.append({"metric": metric_label, "dataset": ds, LABEL_A: va, LABEL_B: vb})
+            row = {"metric": metric_label, "dataset": ds}
+            for df, label, _ in dfs:
+                v = df[(df["dataset"] == ds) & (df["metric_name"] == metric_key)]["metric_value"]
+                row[label] = v.values[0] if len(v) else float("nan")
+            rows.append(row)
     table = pd.DataFrame(rows).set_index(["metric", "dataset"])
     print(table.to_string(float_format=lambda x: f"{x:.4f}"))
 

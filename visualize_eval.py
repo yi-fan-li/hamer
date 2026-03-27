@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from hamer.configs import CACHE_DIR_HAMER, dataset_eval_config
 from hamer.datasets import create_dataset
-from hamer.models import download_models, load_hamer, DEFAULT_CHECKPOINT
+from hamer.models import download_models, load_hamer, load_hamer_gcn, DEFAULT_CHECKPOINT
 from hamer.utils import recursive_to
 from hamer.utils.renderer import Renderer, cam_crop_to_full
 
@@ -40,9 +40,16 @@ def main():
 
     os.makedirs(args.out_folder, exist_ok=True)
 
-    # Load model
+    # Load model — auto-detect GCN checkpoint by presence of GCN config section
     download_models(CACHE_DIR_HAMER)
-    model, model_cfg = load_hamer(args.checkpoint)
+    from pathlib import Path
+    from hamer.configs import get_config
+    _cfg_path = str(Path(args.checkpoint).parent.parent / 'model_config.yaml')
+    _cfg = get_config(_cfg_path, update_cachedir=True)
+    if hasattr(_cfg, 'GCN'):
+        model, model_cfg = load_hamer_gcn(args.checkpoint)
+    else:
+        model, model_cfg = load_hamer(args.checkpoint)
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model = model.to(device)
     model.eval()

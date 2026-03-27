@@ -15,7 +15,6 @@ token_channel.csv
 /hamer_training_data/
 /outputs/
 mano_v1_2/
-*.pth
 
 #additional data to irgnore
 dataset/
@@ -172,7 +171,7 @@ Hot3d_vis/*
 
 # Large data and third-party dependencies 
 # (Matches the folder where your large file was located)
-third-party/
+third-party/git 
 data/
 outputs/
 *.pth
