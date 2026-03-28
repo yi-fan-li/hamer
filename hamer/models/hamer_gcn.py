@@ -9,14 +9,26 @@ from ..utils.geometry import perspective_projection
 from ..utils.pylogger import get_pylogger
 from .hamer import HAMER
 from .losses import Keypoint3DLoss, Keypoint2DLoss
-from .gcn_refinement import GCNRefinementHead
+from .gcn_refinement import GCNRefinementHead, rot_mat_to_6d, six_d_to_rot_mat
 
 log = get_pylogger(__name__)
+
+# Maps MANO kinematic joint index (0-15) → OpenPose joint index in mano_output.joints.
+# MANO wrapper reorders joints to OpenPose format, so we need this to recover the
+# 16 kinematic joint 3D positions in the correct order for feature sampling.
+#   MANO kin:  0=wrist, 1-3=index, 4-6=middle, 7-9=little, 10-12=ring, 13-15=thumb
+#   OpenPose:  0=wrist, 1-4=thumb, 5-8=index, 9-12=middle, 13-16=ring, 17-20=little
+_MANO_KIN_TO_OPENPOSE = [0, 5, 6, 7, 9, 10, 11, 17, 18, 19, 13, 14, 15, 1, 2, 3]
 
 
 class HAMERWithGCN(pl.LightningModule):
     """
-    Frozen HaMeR + trainable GCN joint refinement head.
+    Frozen HaMeR + trainable GCN pose refinement head.
+
+    The GCN refines the 16 MANO joint rotations (6D representation) predicted
+    by the frozen HaMeR head. Refined rotations are converted back to rotation
+    matrices via Gram-Schmidt and passed through the MANO layer together with
+    the original shape betas to recover a refined mesh and keypoints.
 
     Only GCNRefinementHead parameters are updated during training.
     The HAMER backbone + MANO head are fully frozen regardless of backbone type.
@@ -92,23 +104,48 @@ class HAMERWithGCN(pl.LightningModule):
             pred_mano_params['hand_pose']     = pred_mano_params['hand_pose'].reshape(batch_size, -1, 3, 3)
             pred_mano_params['betas']         = pred_mano_params['betas'].reshape(batch_size, -1)
 
-            mano_output = self.mano(
+            # Coarse MANO forward (needed for joint positions used in feature sampling)
+            coarse_mano_output = self.mano(
                 **{k: v.float() for k, v in pred_mano_params.items()}, pose2rot=False,
             )
-            coarse_joints_3d = mano_output.joints                    # [B, 21, 3]
-            pred_vertices    = mano_output.vertices                  # [B, 778, 3]
+            coarse_joints_3d = coarse_mano_output.joints    # [B, 21, 3]  OpenPose order
+            coarse_vertices  = coarse_mano_output.vertices  # [B, 778, 3]
 
-            # Coarse 2D projection (needed as sampling grid for GCN)
-            coarse_keypoints_2d = perspective_projection(
-                coarse_joints_3d,
+            # Extract 16 kinematic joint positions in MANO kinematic order
+            # (needed for 2D projection → GCN feature sampling)
+            kin_joints_3d = coarse_joints_3d[:, _MANO_KIN_TO_OPENPOSE, :]  # [B, 16, 3]
+
+            # Project 16 kinematic joints to 2D for feature sampling grid
+            kin_joints_2d = perspective_projection(
+                kin_joints_3d,
                 translation=pred_cam_t,
                 focal_length=focal_length / self.hamer_cfg.MODEL.IMAGE_SIZE,
-            )  # [B, 21, 2]
+            )  # [B, 16, 2]
+
+            # Stack global_orient + hand_pose → [B, 16, 3, 3], convert to 6D
+            pose_mat = torch.cat(
+                [pred_mano_params['global_orient'], pred_mano_params['hand_pose']], dim=1,
+            )  # [B, 16, 3, 3]
+            pose_6d = rot_mat_to_6d(pose_mat)  # [B, 16, 6]
 
         # --- GCN refinement (trainable) ---
-        refined_joints_3d = self.gcn_head(
-            coarse_joints_3d, feat_map, coarse_keypoints_2d,
-        )  # [B, 21, 3]
+        refined_pose_6d = self.gcn_head(pose_6d, feat_map, kin_joints_2d)  # [B, 16, 6]
+
+        # Convert refined 6D back to rotation matrices via Gram-Schmidt
+        refined_pose_mat = six_d_to_rot_mat(refined_pose_6d)  # [B, 16, 3, 3]
+
+        refined_mano_params = {
+            'global_orient': refined_pose_mat[:, :1],   # [B, 1, 3, 3]
+            'hand_pose':     refined_pose_mat[:, 1:],   # [B, 15, 3, 3]
+            'betas':         pred_mano_params['betas'],
+        }
+
+        # MANO forward with refined pose + original shape
+        refined_mano_output = self.mano(
+            **{k: v.float() for k, v in refined_mano_params.items()}, pose2rot=False,
+        )
+        refined_joints_3d = refined_mano_output.joints    # [B, 21, 3]
+        refined_vertices  = refined_mano_output.vertices  # [B, 778, 3]
 
         # Reproject refined joints for 2D loss
         refined_keypoints_2d = perspective_projection(
@@ -122,12 +159,13 @@ class HAMERWithGCN(pl.LightningModule):
             'pred_mano_params':   {k: v.clone() for k, v in pred_mano_params.items()},
             'pred_cam_t':         pred_cam_t,
             'focal_length':       focal_length,
-            'pred_vertices':      pred_vertices.reshape(batch_size, -1, 3),
             # refined outputs used for loss + eval
+            'pred_vertices':      refined_vertices.reshape(batch_size, -1, 3),
             'pred_keypoints_3d':  refined_joints_3d.reshape(batch_size, -1, 3),
             'pred_keypoints_2d':  refined_keypoints_2d.reshape(batch_size, -1, 2),
             # coarse outputs kept for debugging / logging
             'coarse_keypoints_3d': coarse_joints_3d.reshape(batch_size, -1, 3),
+            'coarse_vertices':     coarse_vertices.reshape(batch_size, -1, 3),
         }
         return output
 

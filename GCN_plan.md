@@ -1,5 +1,14 @@
 # GCN Residual Plan
 
+> **Note (2026-03-27):** The original design (v1, implemented in `gcn_refinement.py` / `hamer_gcn.py`)
+> refines the **21 3D keypoints** in Cartesian space. The plan is being revised (v2) to instead
+> refine the **16 MANO joint rotations** (6D representation) directly, after which the refined
+> pose + original shape betas are passed through the MANO forward pass to recover the full mesh.
+> This is more architecturally principled: corrections propagate through the kinematic chain and
+> the model stays within the MANO parameter space. The v1 files remain in the repo for reference.
+
+---
+
 ## Motivation
 
 Add a GCN at the end of the HaMeR pipeline to correct the 21 joint positions with a residual.
