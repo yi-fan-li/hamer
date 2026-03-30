@@ -1,11 +1,8 @@
 # GCN Residual Plan
 
-> **Note (2026-03-27):** The original design (v1, implemented in `gcn_refinement.py` / `hamer_gcn.py`)
-> refines the **21 3D keypoints** in Cartesian space. The plan is being revised (v2) to instead
-> refine the **16 MANO joint rotations** (6D representation) directly, after which the refined
-> pose + original shape betas are passed through the MANO forward pass to recover the full mesh.
-> This is more architecturally principled: corrections propagate through the kinematic chain and
-> the model stays within the MANO parameter space. The v1 files remain in the repo for reference.
+> **Status (2026-03-30):** v2 is fully implemented and is the current architecture.
+> v1 (21 joint xyz refinement) has been replaced. The files `gcn_refinement.py` and `hamer_gcn.py`
+> now implement v2. See v2 sections below for the current dataflow and architecture details.
 
 ---
 
@@ -17,24 +14,36 @@ HaMeR weights are fully frozen; only the GCN is trained.
 
 ---
 
-## Dataflow
+## Dataflow (v2 — current)
 
 ```
-MANO params → FK → 21 joint positions in 3D
+frozen HaMeR → pred_mano_params (global_orient [B,1,3,3], hand_pose [B,15,3,3], betas)
                          ↓
-              weak-perspective project → 21 (u,v) locations
+              coarse MANO forward → 21 joint positions [B,21,3] (OpenPose order)
                          ↓
-              index into backbone feature map → 21 × C vectors  (grid_sample)
+              reorder via _MANO_KIN_TO_OPENPOSE → 16 kinematic joints [B,16,3]
                          ↓
-              concat with 3D coords → 21 × (C + 3)
+              weak-perspective project → 16 (u,v) locations [B,16,2]
                          ↓
-              shared MLP (Linear → LayerNorm → GELU) → 21 × d
+              index into backbone feature map via grid_sample → 16 × C vectors
                          ↓
-              3 × GCN layers (skeleton adjacency) → 21 × d
+              stack global_orient + hand_pose → [B,16,3,3] → rot_mat_to_6d → [B,16,6]
                          ↓
-              linear head → 21 × 3 delta
+              concat with sampled features → 16 × (C + 6)
                          ↓
-              add to coarse joints → refined 21 × 3
+              shared MLP (Linear → LayerNorm → GELU) → 16 × d
+                         ↓
+              6 × GCN layers (MANO kinematic adjacency) → 16 × d
+                         ↓
+              linear head (zero-init) → 16 × 6 delta
+                         ↓
+              add to coarse 6D → refined 16 × 6
+                         ↓
+              six_d_to_rot_mat (Gram-Schmidt) → [B,16,3,3]
+                         ↓
+              refined MANO forward (refined pose + original betas)
+                         ↓
+              refined vertices [B,778,3]  +  refined joints [B,21,3]
 ```
 
 ---
@@ -45,20 +54,23 @@ MANO params → FK → 21 joint positions in 3D
 - Standard spectral graph conv: `H' = σ(A_hat @ H @ W)`
 - `A_hat = D^{-1/2} (A + I) D^{-1/2}` — fixed buffer, no gradient
 
-### Hand skeleton adjacency (21 joints, OpenPose ordering)
+### Hand skeleton adjacency (16 joints, MANO kinematic ordering)
 ```
-Edges:  0-1, 1-2, 2-3, 3-4        # thumb
-        0-5, 5-6, 6-7, 7-8        # index
-        0-9, 9-10, 10-11, 11-12   # middle
-        0-13, 13-14, 14-15, 15-16 # ring
-        0-17, 17-18, 18-19, 19-20 # pinky
+Joint order:  0=wrist, 1-3=index, 4-6=middle, 7-9=little, 10-12=ring, 13-15=thumb
+Edges:  0-1, 1-2, 2-3          # index
+        0-4, 4-5, 5-6          # middle
+        0-7, 7-8, 8-9          # little/pinky
+        0-10, 10-11, 11-12     # ring
+        0-13, 13-14, 14-15     # thumb
 ```
+
+MANO's `.joints` output is in OpenPose order; `_MANO_KIN_TO_OPENPOSE = [0,5,6,7,9,10,11,17,18,19,13,14,15,1,2,3]` maps kinematic index → OpenPose index to recover joints in the correct GCN order.
 
 ### Hyperparameters
 - `C = 768` (DINOv3-B feature channels)
-- `d = 256` (GCN hidden dim, to decide)
-- 3 GCN layers
-- Input MLP: `(C + 3) → d` in one step (no intermediate projection)
+- `d = 256` (GCN hidden dim)
+- **6 GCN layers**
+- Input MLP: `(C + 6) → d` in one step (6D rotation replaces xyz)
 
 ---
 
@@ -115,8 +127,11 @@ Out-of-bounds handling: `padding_mode='zeros'` (default), consistent with HaMeR'
 
 ## Output Dict Changes
 
-The GCN replaces `pred_keypoints_3d` and `pred_keypoints_2d` with refined versions.
-`pred_vertices` remains the coarse MANO mesh (no vertex refinement).
+The GCN produces refined outputs for all three:
+- `pred_keypoints_3d` — from refined MANO forward pass
+- `pred_keypoints_2d` — reprojection of refined joints
+- `pred_vertices` — from refined MANO forward pass (unlike v1, vertices are also refined)
+- `coarse_keypoints_3d` / `coarse_vertices` — coarse MANO outputs kept for debugging
 
 ---
 
@@ -133,14 +148,13 @@ The GCN replaces `pred_keypoints_3d` and `pred_keypoints_2d` with refined versio
 ### Modified files
 | File | Change |
 |------|--------|
-| `hamer/models/__init__.py` | Export `HAMERWithGCN` |
-| `eval.py` | Add `--model_type` flag to optionally load `HAMERWithGCN` |
+| `hamer/models/__init__.py` | Export `HAMERWithGCN`; add `load_hamer_gcn()` loader |
+| `visualize_eval.py` | Auto-detects GCN checkpoint (checks for `GCN` section in `model_config.yaml`), calls `load_hamer_gcn` automatically |
 
 ---
 
 ## Eval Notes
 
-- `eval.py` currently calls `load_hamer()` which returns a `HAMER` instance
-- For GCN eval, add a `--model_type gcn` flag and a `load_hamer_gcn(ckpt, hamer_ckpt)` loader
-- `pred_vertices` in output will be coarse (from frozen MANO); `pred_keypoints_3d` will be refined
-- FreiHAND/HO3D submit vertices for online eval — these will be unrefined; joint metrics will reflect GCN improvement
+- `eval.py` supports GCN via `--model_type gcn` flag (calls `load_hamer_gcn` instead of `load_hamer`)
+- `visualize_eval.py` auto-detects GCN checkpoints (no flag needed)
+- Both `pred_vertices` and `pred_keypoints_3d` are refined in the GCN output

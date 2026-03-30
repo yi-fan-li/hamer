@@ -58,4 +58,4 @@ GCN:
   # DINOv3-B feature channels (768); update if using a different backbone.
   FEAT_CHANNELS: 768
   HIDDEN_DIM: 256
-  NUM_LAYERS: 3
+  NUM_LAYERS: 6

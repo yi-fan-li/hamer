@@ -47,10 +47,19 @@ python train.py exp_name=hamer data=mix_all experiment=hamer_dinov3_base trainer
 python train.py exp_name=hamer data=mix_all experiment=hamer_vit_transformer trainer=gpu launcher=local
 ```
 
+**Training (GCN refinement head on top of frozen DINOv3 HaMeR):**
+```bash
+python train_gcn.py exp_name=gcn_dinov3b experiment=hamer_gcn trainer=gpu launcher=local \
+    GCN.HAMER_CHECKPOINT=_DATA/hamer_ckpts/dinov3/checkpoints/dinov3_base.ckpt
+```
+Config: `hamer/configs_hydra/experiment/hamer_gcn.yaml`. Only `GCNRefinementHead` parameters are trained; the full HaMeR backbone+head is frozen. If the GCN architecture changes (layer count, hidden dim, input channels), any existing checkpoint becomes incompatible — delete `last.ckpt` and start fresh.
+
 **Evaluation:**
 ```bash
 python eval.py --dataset FREIHAND-VAL
 python eval.py --dataset 'FREIHAND-VAL,HO3D-VAL,NEWDAYS-TEST-ALL,EPICK-TEST-ALL,EGO4D-TEST-ALL'
+# GCN checkpoint:
+python eval.py --dataset FREIHAND-VAL --model_type gcn --checkpoint <gcn_ckpt>
 ```
 
 **Inference time benchmarking** (separate from eval, uses `--benchmark` flag):
@@ -65,6 +74,8 @@ python visualize_eval.py --checkpoint logs/train/runs/hamer/checkpoints/dinov3_b
                           --dataset NEWDAYS-TEST-ALL --num_samples 50 --out_folder vis_out_dinov3
 ```
 Saves a side-by-side image per sample: **original | mesh overlay | mesh only**. Add `--side_view` for a fourth panel. Use this instead of `demo.py` when ViTPose is unavailable due to PyTorch version conflicts.
+
+`visualize_eval.py` auto-detects GCN checkpoints by checking for a `GCN` section in `model_config.yaml` and calls `load_hamer_gcn` automatically — no flag needed.
 
 There is no dedicated test suite; correctness is validated via the evaluation scripts above.
 
@@ -123,6 +134,8 @@ rm -rf /tmp/hot3d_eval/images/
 - **`components/pose_transformer.py`** — `TransformerDecoder`, `CrossAttention`, `Attention` primitives used by the MANO head.
 - **`mano_wrapper.py`** — Wraps the SMPL-X MANO layer; converts predicted parameters to 3D vertices and keypoints.
 - **`discriminator.py`** — Adversarial discriminator for shape regularization during training.
+- **`gcn_refinement.py`** — `GCNRefinementHead`: GCN that refines the 16 MANO joint rotations in **6D representation**. Takes `joints_6d [B,16,6]` + backbone `feat_map [B,C,H,W]` + `joints_2d [B,16,2]` (kinematic joints in `[-0.5,0.5]` space); samples one feature vector per joint via `grid_sample`, concatenates with 6D rotation, projects to hidden dim, runs N GCN layers, predicts a 6D residual. Config: `FEAT_CHANNELS=768`, `HIDDEN_DIM=256`, `NUM_LAYERS=6`. Zero-init on the output head so training starts as identity.
+- **`hamer_gcn.py`** — `HAMERWithGCN(pl.LightningModule)`: loads a frozen `HAMER` checkpoint, runs its backbone+MANO head under `torch.no_grad()`, builds 6D pose inputs for the GCN, runs `GCNRefinementHead`, converts refined 6D back to rotation matrices via Gram-Schmidt (`six_d_to_rot_mat`), and re-runs the MANO forward pass to get refined vertices and joints. Both `pred_vertices` and `pred_keypoints_3d` in the output are from the refined MANO pass. Uses `_MANO_KIN_TO_OPENPOSE = [0,5,6,7,9,10,11,17,18,19,13,14,15,1,2,3]` to reorder MANO's OpenPose-ordered joint output into the kinematic order expected by the GCN.
 
 ### Configuration System (dual)
 - **Hydra** (`hamer/configs_hydra/`) — training experiments, dataset mixes, trainer settings, launcher (local/SLURM). Entry via `train.py`.
@@ -131,6 +144,7 @@ rm -rf /tmp/hot3d_eval/images/
 Key experiment configs:
 - `hamer/configs_hydra/experiment/hamer_dinov3_base.yaml` — DINOv3-B backbone, `context_dim=768`, LR `1e-5`, batch size `8`, 1M steps.
 - `hamer/configs_hydra/experiment/hamer_vit_transformer.yaml` — original ViT backbone config.
+- `hamer/configs_hydra/experiment/hamer_gcn.yaml` — GCN refinement head config; `NUM_LAYERS=6`, `HIDDEN_DIM=256`, `FEAT_CHANNELS=768`, 200k steps. `GCN.HAMER_CHECKPOINT` must be set at launch.
 
 ### Camera Parametrization
 The model predicts a 3-element weak-perspective camera `[s, tx, ty]` via `self.deccam = nn.Linear(dim, 3)` in `mano_head.py`. The focal length (`EXTRA.FOCAL_LENGTH: 5000`) is a **fixed constant**, not learned. Depth is recovered as `tz = 2 * focal / (box_size * s)` in `cam_crop_to_full`. Inaccurate `s` predictions cause the mesh to appear at the wrong scale in the full image.
