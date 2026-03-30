@@ -23,6 +23,36 @@ def vit(cfg):
                 drop_path_rate=0.55,
             )
 
+def vitpose_base(cfg):
+    model = ViT(
+                img_size=(256, 192),
+                patch_size=16,
+                embed_dim=768,
+                depth=12,
+                num_heads=12,
+                ratio=1,
+                use_checkpoint=False,
+                mlp_ratio=4,
+                qkv_bias=True,
+                drop_path_rate=0.3,
+            )
+    pretrained = cfg.MODEL.BACKBONE.get('PRETRAINED', None)
+    if pretrained:
+        ckpt = torch.load(pretrained, map_location='cpu')
+        # mmpose checkpoint: keys are 'backbone.*' and 'keypoint_head.*'
+        backbone_sd = {
+            k[len('backbone.'):]: v
+            for k, v in ckpt['state_dict'].items()
+            if k.startswith('backbone.')
+        }
+        missing, unexpected = model.load_state_dict(backbone_sd, strict=False)
+        print(f'[vitpose_base] Loaded pretrained weights from {pretrained}')
+        if missing:
+            print(f'[vitpose_base] Missing keys: {missing}')
+        if unexpected:
+            print(f'[vitpose_base] Unexpected keys (ignored): {unexpected}')
+    return model
+
 def get_abs_pos(abs_pos, h, w, ori_h, ori_w, has_cls_token=True):
     """
     Calculate absolute positional embeddings. If needed, resize embeddings and remove cls_token
