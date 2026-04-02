@@ -137,6 +137,11 @@ class Attention(nn.Module):
         self.proj = nn.Linear(all_head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
+        # Set to True via ViT.set_store_attn() to cache post-softmax attention
+        # weights in self._attn_weights after each forward pass.
+        self.store_attn = False
+        self._attn_weights = None  # [B, num_heads, N, N], populated when store_attn=True
+
     def forward(self, x):
         B, N, C = x.shape
         qkv = self.qkv(x)
@@ -147,6 +152,8 @@ class Attention(nn.Module):
         attn = (q @ k.transpose(-2, -1))
 
         attn = attn.softmax(dim=-1)
+        if self.store_attn:
+            self._attn_weights = attn  # [B, num_heads, N, N]
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, -1)
@@ -342,6 +349,32 @@ class ViT(nn.Module):
 
     def get_num_layers(self):
         return len(self.blocks)
+
+    def set_store_attn(self, layer_indices):
+        """Enable attention-map storage for the given layer indices, disable for all others.
+
+        After a forward pass, stored maps are accessible via get_attn_maps().
+        Only enable on layers you actually need to keep memory overhead minimal.
+
+        Args:
+            layer_indices: iterable of int layer indices (0-based) to enable.
+        """
+        active = set(layer_indices)
+        for i, blk in enumerate(self.blocks):
+            blk.attn.store_attn = (i in active)
+
+    def get_attn_maps(self, layer_indices):
+        """Return the post-softmax attention maps cached by the last forward pass.
+
+        Must be called after a forward pass with store_attn enabled for those layers.
+
+        Args:
+            layer_indices: iterable of int layer indices to retrieve.
+
+        Returns:
+            List of tensors, each of shape [B, num_heads, N, N].
+        """
+        return [self.blocks[i].attn._attn_weights for i in layer_indices]
 
     @torch.jit.ignore
     def no_weight_decay(self):

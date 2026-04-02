@@ -1,6 +1,7 @@
 from .mano_wrapper import MANO
 from .hamer import HAMER
 from .hamer_gcn import HAMERWithGCN
+from .distilled_hamer import DistilledHAMER
 from .discriminator import Discriminator
 
 from ..utils.download import cache_url

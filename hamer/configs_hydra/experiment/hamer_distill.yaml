@@ -1,0 +1,79 @@
+# @package _global_
+# Backbone distillation: ViT-B student learns to mimic ViT-H teacher attention maps.
+#
+# Usage:
+#   python train_distill.py \
+#       exp_name=distill_vitb \
+#       experiment=hamer_distill \
+#       DISTILL.TEACHER_CHECKPOINT=_DATA/hamer_ckpts/checkpoints/hamer.ckpt \
+#       data=mix_all trainer=gpu launcher=local
+#
+# After ~100 steps, inspect tensorboard scalars `train/loss_task` and
+# `train/loss_distill` and adjust DISTILL.LOSS_WEIGHT so that
+# LOSS_WEIGHT * loss_distill is in the same order of magnitude as loss_task.
+
+defaults:
+  - default.yaml
+
+GENERAL:
+  TOTAL_STEPS: 500_000
+  LOG_STEPS: 500
+  VAL_STEPS: 1000
+  CHECKPOINT_STEPS: 1000
+  CHECKPOINT_SAVE_TOP_K: 1
+  NUM_WORKERS: 2
+  PREFETCH_FACTOR: 2
+
+TRAIN:
+  LR: 1e-5
+  WEIGHT_DECAY: 1e-4
+  BATCH_SIZE: 8
+  LOSS_REDUCTION: mean
+  NUM_TRAIN_SAMPLES: 2
+  NUM_TEST_SAMPLES: 64
+  POSE_2D_NOISE_RATIO: 0.01
+  SMPL_PARAM_NOISE_RATIO: 0.005
+
+MODEL:
+  IMAGE_SIZE: 256
+  IMAGE_MEAN: [0.485, 0.456, 0.406]
+  IMAGE_STD: [0.229, 0.224, 0.225]
+  BBOX_SHAPE: [192, 256]
+  BACKBONE:
+    TYPE: vitpose_base
+    PRETRAINED: hamer_training_data/vitpose_base_coco_aic_mpii.pth
+  MANO_HEAD:
+    TYPE: transformer_decoder
+    IN_CHANNELS: 2048
+    TRANSFORMER_DECODER:
+      depth: 6
+      heads: 8
+      mlp_dim: 1024
+      dim_head: 64
+      dropout: 0.0
+      emb_dropout: 0.0
+      norm: layer
+      context_dim: 768  # ViT-B embed_dim
+
+LOSS_WEIGHTS:
+  KEYPOINTS_3D: 0.05
+  KEYPOINTS_2D: 0.01
+  GLOBAL_ORIENT: 0.001
+  HAND_POSE: 0.001
+  BETAS: 0.0005
+  ADVERSARIAL: 0.0005
+
+DISTILL:
+  # Path to the pretrained frozen ViT-H HaMeR checkpoint (teacher).
+  TEACHER_CHECKPOINT: ???
+  # Optional: path to a trained ViT-B HaMeR checkpoint to initialise the
+  # student backbone and MANO head. Strongly recommended — avoids random MANO
+  # head init and lets distillation focus purely on attention alignment.
+  STUDENT_CHECKPOINT: null
+  # Weight on the KL distillation loss relative to the task loss.
+  # Start here; tune after inspecting train/loss_task vs train/loss_distill
+  # in TensorBoard after ~100 steps.
+  LOSS_WEIGHT: 1e-3
+  # Number of training batches to average similarity matrices over before
+  # running the Hungarian head assignment (batch_size * HEAD_ASSIGN_BATCHES images).
+  HEAD_ASSIGN_BATCHES: 8

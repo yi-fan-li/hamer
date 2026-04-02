@@ -54,6 +54,13 @@ python train_gcn.py exp_name=gcn_dinov3b experiment=hamer_gcn trainer=gpu launch
 ```
 Config: `hamer/configs_hydra/experiment/hamer_gcn.yaml`. Only `GCNRefinementHead` parameters are trained; the full HaMeR backbone+head is frozen. If the GCN architecture changes (layer count, hidden dim, input channels), any existing checkpoint becomes incompatible — delete `last.ckpt` and start fresh.
 
+**Training (backbone distillation: ViT-B student from ViT-H teacher):**
+```bash
+python train_distill.py exp_name=distill_vitb experiment=hamer_distill trainer=gpu launcher=local \
+    DISTILL.TEACHER_CHECKPOINT=_DATA/hamer_ckpts/checkpoints/hamer.ckpt
+```
+Config: `hamer/configs_hydra/experiment/hamer_distill.yaml`. The teacher (ViT-H) is frozen; only the student ViT-B backbone and MANO head are trained. After ~100 steps, check `train/loss_task` vs `train/loss_distill` in TensorBoard and adjust `DISTILL.LOSS_WEIGHT` so `LOSS_WEIGHT * loss_distill ≈ loss_task`. Head matching (bipartite Hungarian assignment per layer pair) is computed once on the first training batch and stored in the checkpoint.
+
 **Evaluation:**
 ```bash
 python eval.py --dataset FREIHAND-VAL
