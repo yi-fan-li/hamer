@@ -1,0 +1,87 @@
+# @package _global_
+# Backbone distillation: DINOv3-B student learns to mimic ViT-H teacher attention maps.
+# Student is initialised from a pretrained dinov3_base HaMeR checkpoint.
+#
+# Usage:
+#   python train_distill.py \
+#       exp_name=distill_dino \
+#       experiment=hamer_distill_dino \
+#       DISTILL.TEACHER_CHECKPOINT=_DATA/hamer_ckpts/checkpoints/hamer.ckpt \
+#       DISTILL.STUDENT_CHECKPOINT=_DATA/hamer_ckpts/dinov3/checkpoints/dinov3_base.ckpt \
+#       data=mix_all trainer=gpu launcher=local
+#
+# After ~100 steps, inspect tensorboard scalars `train/loss_task` and
+# `train/loss_distill` and adjust DISTILL.LOSS_WEIGHT so that
+# LOSS_WEIGHT * loss_distill is in the same order of magnitude as loss_task.
+
+defaults:
+  - default.yaml
+
+GENERAL:
+  TOTAL_STEPS: 500_000
+  LOG_STEPS: 500
+  VAL_STEPS: 1000
+  CHECKPOINT_STEPS: 1000
+  CHECKPOINT_SAVE_TOP_K: 1
+  NUM_WORKERS: 2
+  PREFETCH_FACTOR: 2
+
+TRAIN:
+  LR: 1e-5
+  WEIGHT_DECAY: 1e-4
+  BATCH_SIZE: 8
+  LOSS_REDUCTION: mean
+  NUM_TRAIN_SAMPLES: 2
+  NUM_TEST_SAMPLES: 64
+  POSE_2D_NOISE_RATIO: 0.01
+  SMPL_PARAM_NOISE_RATIO: 0.005
+
+MODEL:
+  IMAGE_SIZE: 256
+  IMAGE_MEAN: [0.485, 0.456, 0.406]
+  IMAGE_STD: [0.229, 0.224, 0.225]
+  # Keep the same non-square crop as the ViT-H teacher.
+  # DINOv3 uses RoPE so it handles 192x256 input natively without any
+  # modification — with patch_size=16 this gives 12x16=192 spatial tokens,
+  # matching the teacher's token count exactly (no resize needed).
+  BBOX_SHAPE: [192, 256]
+  BACKBONE:
+    TYPE: dinov3
+    PRETRAINED_WEIGHTS: hamer_training_data/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
+    # Unfreeze all 12 blocks so distillation can update the full backbone.
+    NUM_UNFROZEN_LAYERS: 12
+  MANO_HEAD:
+    TYPE: transformer_decoder
+    IN_CHANNELS: 2048
+    TRANSFORMER_DECODER:
+      depth: 6
+      heads: 8
+      mlp_dim: 1024
+      dim_head: 64
+      dropout: 0.0
+      emb_dropout: 0.0
+      norm: layer
+      context_dim: 768  # DINOv3-B embed_dim
+
+LOSS_WEIGHTS:
+  KEYPOINTS_3D: 0.05
+  KEYPOINTS_2D: 0.01
+  GLOBAL_ORIENT: 0.001
+  HAND_POSE: 0.001
+  BETAS: 0.0005
+  ADVERSARIAL: 0.0005
+
+DISTILL:
+  # Path to the pretrained frozen ViT-H HaMeR checkpoint (teacher).
+  TEACHER_CHECKPOINT: ???
+  # Pretrained DINOv3-B HaMeR checkpoint to initialise the student.
+  # Strongly recommended — skips task-loss cold start and lets distillation
+  # focus on attention alignment from a good initialisation.
+  STUDENT_CHECKPOINT: null
+  # Weight on the KL distillation loss relative to the task loss.
+  # Start here; tune after inspecting train/loss_task vs train/loss_distill
+  # in TensorBoard after ~100 steps.
+  LOSS_WEIGHT: 1e-3
+  # Number of training batches to average similarity matrices over before
+  # running the Hungarian head assignment.
+  HEAD_ASSIGN_BATCHES: 8
