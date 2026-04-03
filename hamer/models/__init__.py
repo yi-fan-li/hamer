@@ -32,6 +32,47 @@ def download_models(folder=CACHE_DIR_HAMER):
 
 DEFAULT_CHECKPOINT=f'{CACHE_DIR_HAMER}/hamer_ckpts/checkpoints/hamer.ckpt'
 
+
+def load_hamer_distill(checkpoint_path: str):
+    """Load a DistilledHAMER checkpoint for inference.
+
+    Extracts only the student backbone + MANO head weights from the checkpoint
+    and loads them into a standard HAMER model.  The teacher is never
+    instantiated, so the teacher checkpoint path does not need to be present.
+    """
+    import torch
+    from pathlib import Path
+    from ..configs import get_config
+
+    model_cfg_path = str(Path(checkpoint_path).parent.parent / 'model_config.yaml')
+    model_cfg = get_config(model_cfg_path, update_cachedir=True)
+
+    if (model_cfg.MODEL.BACKBONE.TYPE == 'vit') and ('BBOX_SHAPE' not in model_cfg.MODEL):
+        model_cfg.defrost()
+        assert model_cfg.MODEL.IMAGE_SIZE == 256
+        model_cfg.MODEL.BBOX_SHAPE = [192, 256]
+        model_cfg.freeze()
+
+    if 'PRETRAINED_WEIGHTS' in model_cfg.MODEL.BACKBONE:
+        model_cfg.defrost()
+        model_cfg.MODEL.BACKBONE.pop('PRETRAINED_WEIGHTS')
+        model_cfg.freeze()
+
+    ckpt = torch.load(checkpoint_path, map_location='cpu')
+    state_dict = ckpt.get('state_dict', ckpt)
+
+    # Keep only student keys; ignore teacher.*, discriminator.*, buffers, etc.
+    student_state = {
+        k: v for k, v in state_dict.items()
+        if k.startswith('backbone.') or k.startswith('mano_head.')
+    }
+
+    model = HAMER(model_cfg, init_renderer=False)
+    missing, unexpected = model.load_state_dict(student_state, strict=False)
+    # discriminator / mano keys will be in `missing` — that's expected for inference.
+    return model, model_cfg
+
+
 def load_hamer_gcn(checkpoint_path: str):
     """Load a HAMERWithGCN model from a GCN training checkpoint."""
     from pathlib import Path

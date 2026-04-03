@@ -11,11 +11,11 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 MODELS = [
-    ("results/eval_regression_dinov3_base.csv", "DINOv3-B (fine-tuned)",  "#4C72B0"),
-    ("results/eval_regression.csv",      "DINOv3-B with GCN refinement (6 layers)",     "#DD8452"),
+    ("results/eval_regression_vitb.csv", "ViTpose-B (fine-tuned)",  "#4C72B0"),
+    ("results/eval_regression_vitb_distill.csv",      "ViTpose-B (distilled)",     "#DD8452"),
 ]
 
-OUT = "results/comparison_plot_gcn6l.png"
+OUT = "results/comparison_plot_distillationvitb.png"
 
 # Summary metrics to plot (one panel each)
 SUMMARY_METRICS = [

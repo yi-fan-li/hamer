@@ -15,12 +15,12 @@ from hamer.utils import Evaluator, recursive_to
 from tqdm import tqdm
 
 from hamer.configs import CACHE_DIR_HAMER
-from hamer.models import HAMER, download_models, load_hamer, load_hamer_gcn, DEFAULT_CHECKPOINT
+from hamer.models import HAMER, download_models, load_hamer, load_hamer_gcn, load_hamer_distill, DEFAULT_CHECKPOINT
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate trained models')
     parser.add_argument('--checkpoint', type=str, default=DEFAULT_CHECKPOINT, help='Path to pretrained model checkpoint')
-    parser.add_argument('--model_type', type=str, default='hamer', choices=['hamer', 'gcn'], help='Model type: hamer (default) or gcn (HAMERWithGCN)')
+    parser.add_argument('--model_type', type=str, default='hamer', choices=['hamer', 'gcn', 'distill'], help='Model type: hamer (default), gcn (HAMERWithGCN), or distill (DistilledHAMER student)')
     parser.add_argument('--results_folder', type=str, default='results', help='Path to results folder.')
     parser.add_argument('--dataset', type=str, default='FREIHAND-VAL,HO3D-VAL,NEWDAYS-TEST-ALL,NEWDAYS-TEST-VIS,NEWDAYS-TEST-OCC,EPICK-TEST-ALL,EPICK-TEST-VIS,EPICK-TEST-OCC,EGO4D-TEST-ALL,EGO4D-TEST-VIS,EGO4D-TEST-OCC', help='Dataset to evaluate')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size for inference')
@@ -37,6 +37,8 @@ def main():
     download_models(CACHE_DIR_HAMER)
     if args.model_type == 'gcn':
         model, model_cfg = load_hamer_gcn(args.checkpoint)
+    elif args.model_type == 'distill':
+        model, model_cfg = load_hamer_distill(args.checkpoint)
     else:
         model, model_cfg = load_hamer(args.checkpoint)
 
